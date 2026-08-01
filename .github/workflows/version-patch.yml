@@ -1,0 +1,39 @@
+# Sube el patch en cada merge a master. El patch cuenta despliegues, no cambios de
+# cara al cliente: por eso NO toca CHANGELOG.md. La version que lee el cliente la
+# cierra una persona con /release.
+name: Version patch
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    # El commit del bump no puede volver a dispararse a si mismo
+    if: "!contains(github.event.head_commit.message, '[skip version]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Subir patch y taggear
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          V=$(jq -r .version package.json)
+          IFS=. read -r MA MI PA <<< "$V"
+          NUEVA="$MA.$MI.$((PA+1))"
+
+          tmp=$(mktemp); jq --arg v "$NUEVA" '.version=$v' package.json > "$tmp" && mv "$tmp" package.json
+          git add package.json
+          git commit -m "$NUEVA [skip version]"
+          git tag -a "v$NUEVA" -m "$NUEVA"
+          git push origin "HEAD:${{ github.ref_name }}" --follow-tags
+          echo "Desplegada $NUEVA" >> $GITHUB_STEP_SUMMARY
